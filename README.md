@@ -107,13 +107,13 @@ To build from source for development purposes:
 py -3.12 -m venv .venv
 .venv\Scripts\Activate.ps1
 pip install -r requirements.txt
-python -m linkwireless
+python -m linkit
 ```
 
 To build the EXE locally:
 
 ```powershell
 pip install pyinstaller
-pyinstaller --noconfirm --clean --onefile --noconsole --name linkit --collect-all keyring --collect-all pystray --collect-all Pillow linkwireless_cli.py
+pyinstaller --noconfirm --clean --onefile --noconsole --name linkit --collect-all keyring --collect-all pystray --collect-all Pillow linkit_cli.py
 ```
 

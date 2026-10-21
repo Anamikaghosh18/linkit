@@ -29,7 +29,7 @@ jobs:
 
     - name: Build EXE with PyInstaller
       run: |
-        pyinstaller --noconfirm --clean --onefile --noconsole --name linkit --collect-all keyring --collect-all pystray --collect-all Pillow linkwireless_cli.py
+        pyinstaller --noconfirm --clean --onefile --noconsole --name linkit --collect-all keyring --collect-all pystray --collect-all Pillow linkit_cli.py
 
     - name: Create Release and Upload EXE
       uses: softprops/action-gh-release@v1

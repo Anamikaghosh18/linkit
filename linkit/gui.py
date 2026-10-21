@@ -1,37 +1,57 @@
 import tkinter as tk
 from tkinter import ttk, messagebox
 import threading
-import sys
-from .config import load_config, save_config, APP_DIR, CONFIG_PATH, PORTAL_URL
-from .credentials import prompt_and_save, get_credentials, clear_credentials
-from .wifi import current_ssid, visible_ssids, is_visible, connect_using_saved_profile
+from .config import load_config, save_config, PORTAL_URL
+from .credentials import get_credentials, clear_credentials, save_credentials
+from .wifi import current_ssid, is_visible, connect_using_saved_profile
 from .portal import open_portal, authenticate
-from .startup import install_startup, uninstall_startup
+from .startup import install_startup
 import time
 import pystray
 from PIL import Image
-import queue
 
-class LinkWirelessGUI:
+
+class LinkitGUI:
     def __init__(self):
         self.root = tk.Tk()
         self.root.title("linkit Setup")
         self.root.geometry("450x400")
         self.root.resizable(False, False)
         self.running = False
-        self.worker_queue = queue.Queue()
         self.icon = None
+        self.setup_frame = None
+        self.ssid_var = tk.StringVar()
+        self.username_var = tk.StringVar()
+        self.password_var = tk.StringVar()
 
         # Check if already configured
         cfg = load_config()
-        if cfg.get("ssid") and get_credentials()[0]:
+        if cfg.get("ssid") and self._stored_username():
             self.create_tray_icon()
             self.root.withdraw()
             self.start_background_service()
         else:
             self.create_setup_window()
 
+    @staticmethod
+    def _stored_username():
+        """Read the saved username without letting credential-store errors crash startup."""
+        try:
+            username, _ = get_credentials()
+            return username
+        except Exception:
+            return None
+
     def create_setup_window(self):
+        # Remove any previously built setup UI so reopening settings does not
+        # stack duplicate widgets on top of each other.
+        for widget in list(self.root.winfo_children()):
+            try:
+                widget.destroy()
+            except Exception:
+                pass
+        self.setup_frame = None
+
         # Header
         header = tk.Frame(self.root, bg="#2c3e50", height=80)
         header.pack(fill=tk.X)
@@ -48,23 +68,20 @@ class LinkWirelessGUI:
         # Content frame
         content = tk.Frame(self.root, padx=30, pady=20)
         content.pack(fill=tk.BOTH, expand=True)
+        self.setup_frame = content
 
         # SSID Field
         tk.Label(content, text="Wi-Fi Network Name (SSID):", font=("Arial", 10, "bold")).pack(anchor=tk.W)
-        self.ssid_var = tk.StringVar()
         ssid_entry = ttk.Entry(content, textvariable=self.ssid_var, font=("Arial", 10))
         ssid_entry.pack(fill=tk.X, pady=(5, 15))
-        ssid_entry.focus()
 
         # Username Field
         tk.Label(content, text="Portal Username:", font=("Arial", 10, "bold")).pack(anchor=tk.W)
-        self.username_var = tk.StringVar()
         username_entry = ttk.Entry(content, textvariable=self.username_var, font=("Arial", 10))
         username_entry.pack(fill=tk.X, pady=(5, 15))
 
         # Password Field
         tk.Label(content, text="Portal Password:", font=("Arial", 10, "bold")).pack(anchor=tk.W)
-        self.password_var = tk.StringVar()
         password_entry = ttk.Entry(content, textvariable=self.password_var, font=("Arial", 10), show="●")
         password_entry.pack(fill=tk.X, pady=(5, 15))
 
@@ -89,17 +106,20 @@ class LinkWirelessGUI:
         cfg = load_config()
         if cfg.get("ssid"):
             self.ssid_var.set(cfg["ssid"])
-        try:
-            username, _ = get_credentials()
-            if username:
-                self.username_var.set(username)
-        except:
-            pass
+        username = self._stored_username()
+        if username:
+            self.username_var.set(username)
+
+        ssid_entry.focus()
 
     def reset_config(self):
         if messagebox.askyesno("Reset Configuration", 
                                "This will clear all saved credentials and settings. Continue?"):
-            clear_credentials()
+            try:
+                clear_credentials()
+            except Exception as exc:
+                messagebox.showerror("Error", f"Failed to clear credentials: {exc}")
+                return
             cfg = load_config()
             cfg["ssid"] = ""
             save_config(cfg)
@@ -131,7 +151,6 @@ class LinkWirelessGUI:
             save_config(cfg)
 
             # Save credentials
-            from .credentials import save_credentials
             save_credentials(username, password)
 
             # Install startup
@@ -141,8 +160,9 @@ class LinkWirelessGUI:
                               "linkit is now configured and will start automatically with Windows.\n\n"
                               "The application will run in the background and auto-connect when the network is in range.")
 
-            # Close setup window and start background service
-            self.root.destroy()
+            # Hide the setup window (the root owns the tray icon, so it must
+            # stay alive) and start the background service.
+            self.root.withdraw()
             self.create_tray_icon()
             self.start_background_service()
 
@@ -150,6 +170,8 @@ class LinkWirelessGUI:
             messagebox.showerror("Error", f"Failed to save configuration: {e}")
 
     def create_tray_icon(self):
+        if self.icon is not None:
+            return
         # Create a simple icon (colored square)
         icon_image = Image.new('RGB', (64, 64), color='#3498db')
         self.icon = pystray.Icon("linkit", icon_image, "linkit")
@@ -166,16 +188,28 @@ class LinkWirelessGUI:
 
         threading.Thread(target=run_icon, daemon=True).start()
 
+    def _on_tk_thread(self, func, *args):
+        """Tk is not thread-safe: hop onto the main loop thread."""
+        try:
+            self.root.after(0, func, *args)
+        except Exception:
+            pass
+
     def show_status(self, icon, item):
         cfg = load_config()
         ssid = cfg.get("ssid", "Not configured")
         current = current_ssid() or "Not connected"
-        messagebox.showinfo("linkit Status", 
+        status = "Running" if self.running else "Stopped"
+        self._on_tk_thread(
+            messagebox.showinfo, "linkit Status", 
                           f"Target Network: {ssid}\n"
                           f"Current Connection: {current}\n"
-                          f"Status: {'Running' if self.running else 'Stopped'}")
+                          f"Status: {status}")
 
     def open_settings(self, icon, item):
+        self._on_tk_thread(self._open_settings)
+
+    def _open_settings(self):
         self.root.deiconify()
         self.create_setup_window()
 
@@ -183,15 +217,25 @@ class LinkWirelessGUI:
         self.running = False
         if self.icon:
             self.icon.stop()
-        sys.exit(0)
+        self._on_tk_thread(self._shutdown)
+
+    def _shutdown(self):
+        try:
+            self.root.quit()
+            self.root.destroy()
+        except Exception:
+            pass
 
     def start_background_service(self):
+        if self.running:
+            return
         self.running = True
         
         def worker():
             cfg = load_config()
             ssid = cfg.get("ssid", "").strip()
             if not ssid:
+                self.running = False
                 return
 
             last_portal_open = 0.0
@@ -204,7 +248,7 @@ class LinkWirelessGUI:
 
                     current = current_ssid()
                     if current and current.casefold() == ssid.casefold():
-                        ok, message = authenticate(username, password, cfg.get("portal_url", PORTAL_URL))
+                        ok, _message = authenticate(username, password, cfg.get("portal_url", PORTAL_URL))
                         if not ok:
                             now = time.time()
                             if cfg.get("open_portal_on_detect", True) and now - last_portal_open > 300:
@@ -214,7 +258,7 @@ class LinkWirelessGUI:
                         connect_using_saved_profile(ssid)
                     
                     time.sleep(max(10, int(cfg.get("poll_seconds", 20))))
-                except Exception as exc:
+                except Exception:
                     time.sleep(30)
 
         threading.Thread(target=worker, daemon=True).start()
@@ -223,7 +267,7 @@ class LinkWirelessGUI:
         self.root.mainloop()
 
 def main():
-    app = LinkWirelessGUI()
+    app = LinkitGUI()
     app.run()
 
 if __name__ == "__main__":

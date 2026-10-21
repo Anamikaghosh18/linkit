@@ -4,13 +4,16 @@ import time
 import sys
 from .config import load_config, save_config, APP_DIR, CONFIG_PATH, PORTAL_URL
 from .credentials import prompt_and_save, get_credentials, clear_credentials
-from .wifi import current_ssid, visible_ssids, is_visible, connect_using_saved_profile
+from .wifi import current_ssid, is_visible, connect_using_saved_profile
 from .portal import open_portal, authenticate
 from .startup import install_startup, uninstall_startup
 
+CLI_COMMANDS = ("setup", "reset", "status", "run", "install-startup", "uninstall")
+
+
 def setup() -> None:
     cfg = load_config()
-    print("LinkWireless first-time setup")
+    print("linkit first-time setup")
     print("-----------------------------")
     ssid = input("Exact LPU Wi-Fi SSID (as shown by Windows): ").strip()
     if not ssid:
@@ -19,7 +22,7 @@ def setup() -> None:
     cfg["portal_url"] = input(f"Portal URL [{PORTAL_URL}]: ").strip() or PORTAL_URL
     save_config(cfg)
     prompt_and_save()
-    print("\nSetup complete. Test with: python -m linkwireless run")
+    print("\nSetup complete. Test with: python -m linkit run")
 
 def reset() -> None:
     clear_credentials()
@@ -27,7 +30,7 @@ def reset() -> None:
     cfg["ssid"] = ""
     save_config(cfg)
     print("Saved credentials removed and SSID cleared.")
-    print("Run 'python -m linkwireless setup' to configure again.")
+    print("Run 'python -m linkit setup' to configure again.")
 
 def status() -> None:
     cfg = load_config()
@@ -51,14 +54,14 @@ def run_loop() -> None:
     cfg = load_config()
     ssid = cfg.get("ssid", "").strip()
     if not ssid:
-        print("LinkWireless is not configured. Run 'python -m linkwireless setup'.")
+        print("linkit is not configured. Run 'python -m linkit setup'.")
         return
     username, password = get_credentials()
     if not username or not password:
-        print("Credentials are missing. Run 'python -m linkwireless setup'.")
+        print("Credentials are missing. Run 'python -m linkit setup'.")
         return
 
-    print(f"LinkWireless running. Target SSID: {ssid}. Press Ctrl+C to stop.")
+    print(f"linkit running. Target SSID: {ssid}. Press Ctrl+C to stop.")
     last_portal_open = 0.0
     while True:
         try:
@@ -79,22 +82,22 @@ def run_loop() -> None:
                 print("Connection request sent." if ok else f"Connection request may have failed: {message}")
             time.sleep(max(10, int(cfg.get("poll_seconds", 20))))
         except KeyboardInterrupt:
-            print("LinkWireless stopped.")
+            print("linkit stopped.")
             return
         except Exception as exc:
             print(f"Temporary error: {exc}")
             time.sleep(30)
 
-def main() -> None:
-    parser = argparse.ArgumentParser(prog="LinkWireless", description="Lightweight LPU Wi-Fi helper")
+def main(argv: list[str] | None = None) -> None:
+    parser = argparse.ArgumentParser(prog="linkit", description="Lightweight campus Wi-Fi helper")
     sub = parser.add_subparsers(dest="command")
     sub.add_parser("setup", help="first-time configuration")
     sub.add_parser("reset", help="remove saved credentials and settings")
     sub.add_parser("status", help="show configuration and network status")
     sub.add_parser("run", help="run background monitoring in this console")
-    sub.add_parser("install-startup", help="start LinkWireless when you sign in to Windows")
+    sub.add_parser("install-startup", help="start linkit when you sign in to Windows")
     sub.add_parser("uninstall", help="remove Windows startup registration")
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
     try:
         if args.command == "setup":
             setup()
@@ -106,10 +109,10 @@ def main() -> None:
             run_loop()
         elif args.command == "install-startup":
             install_startup()
-            print("LinkWireless registered for startup.")
+            print("linkit registered for startup.")
         elif args.command == "uninstall":
             uninstall_startup()
-            print("LinkWireless startup registration removed.")
+            print("linkit startup registration removed.")
         else:
             parser.print_help()
     except Exception as exc:

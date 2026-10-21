@@ -3,7 +3,7 @@ import json
 import os
 from pathlib import Path
 
-APP_NAME = "LinkWireless"
+APP_NAME = "linkit"
 APP_DIR = Path(os.environ.get("APPDATA", str(Path.home()))) / APP_NAME
 CONFIG_PATH = APP_DIR / "config.json"
 PORTAL_URL = "https://internet.lpu.in/24online/webpages/client.jsp"

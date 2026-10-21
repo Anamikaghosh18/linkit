@@ -7,6 +7,7 @@ SERVICE = "linkit.LPU24Online"
 def _keyring():
     try:
         import keyring
+        import keyring.errors  # ensures keyring.errors is always available
         return keyring
     except ImportError as exc:
         raise RuntimeError("Missing dependency. Run: pip install -r requirements.txt") from exc

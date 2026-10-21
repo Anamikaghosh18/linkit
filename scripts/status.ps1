@@ -1,1 +1,1 @@
-& .\.venv\Scripts\python.exe -m linkwireless status
+& .\.venv\Scripts\python.exe -m linkit status

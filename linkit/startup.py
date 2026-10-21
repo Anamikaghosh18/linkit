@@ -18,7 +18,7 @@ def _command() -> str:
     # For source mode, use pythonw to avoid console window
     pythonw = Path(sys.executable).with_name("pythonw.exe")
     exe = pythonw if pythonw.exists() else Path(sys.executable)
-    return f'"{exe}" -m linkwireless'
+    return f'"{exe}" -m linkit'
 
 def install_startup() -> None:
     winreg = _winreg()

@@ -1,1 +1,1 @@
-& .\.venv\Scripts\python.exe -m linkwireless run
+& .\.venv\Scripts\python.exe -m linkit run
