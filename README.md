@@ -1,5 +1,8 @@
 # linkit
 
+[![Release](https://img.shields.io/github/release/Anamikaghosh18/linkit?label=Download&style=for-the-badge)](https://github.com/Anamikaghosh18/linkit/releases/latest)
+[![Build](https://github.com/Anamikaghosh18/linkit/actions/workflows/build-exe.yml/badge.svg)](https://github.com/Anamikaghosh18/linkit/actions/workflows/build-exe.yml)
+
 **Automatically connect to your campus Wi-Fi network**
 
 linkit is a lightweight Windows application that automatically detects and connects to your campus Wi-Fi network when it's in range. Simply enter your credentials once, and linkit handles the rest - running silently in the background and keeping you connected.
@@ -101,7 +104,36 @@ This project is licensed under the terms specified in the [LICENSE](LICENSE) fil
 
 ## For Developers
 
-To build from source for development purposes:
+### Releasing a New Version
+
+Releases are automated. Pushing a `v*` tag builds the EXE on GitHub Actions and
+publishes it to the Releases page:
+
+```powershell
+# 1. Make sure main is committed and pushed
+git push origin main
+
+# 2. Create and push the tag (semantic version)
+git tag -a v0.1.0 -m "Release v0.1.0"
+git push origin v0.1.0
+```
+
+The `Create Release and Build` workflow then:
+1. Builds `linkit.exe` with PyInstaller on `windows-latest`
+2. Generates a `linkit.exe.sha256` checksum
+3. Publishes both as release assets with auto-generated release notes
+
+Monitor progress at
+[github.com/Anamikaghosh18/linkit/actions](https://github.com/Anamikaghosh18/linkit/actions).
+
+To undo a release, delete the tag locally and remotely:
+
+```powershell
+git tag -d v0.1.0
+git push origin --delete v0.1.0
+```
+
+### Build from Source
 
 ```powershell
 py -3.12 -m venv .venv
@@ -116,4 +148,13 @@ To build the EXE locally:
 pip install pyinstaller
 pyinstaller --noconfirm --clean --onefile --noconsole --name linkit --collect-all keyring --collect-all pystray --collect-all Pillow linkit_cli.py
 ```
+
+> **Note:** If the build fails with a Tcl/Tk error, stale `TCL_LIBRARY` or
+> `TK_LIBRARY` environment variables pointing at an old Python install are the
+> usual cause. Clear them before building:
+>
+> ```powershell
+> Remove-Item Env:\TCL_LIBRARY -ErrorAction SilentlyContinue
+> Remove-Item Env:\TK_LIBRARY -ErrorAction SilentlyContinue
+> ```
 

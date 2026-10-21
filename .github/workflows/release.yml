@@ -8,6 +8,10 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   build-and-release:
     runs-on: windows-latest
@@ -31,10 +35,20 @@ jobs:
       run: |
         pyinstaller --noconfirm --clean --onefile --noconsole --name linkit --collect-all keyring --collect-all pystray --collect-all Pillow linkit_cli.py
 
+    - name: Generate SHA256 checksum
+      run: |
+        $hash = (Get-FileHash -Algorithm SHA256 -Path dist\linkit.exe).Hash.ToLower()
+        "$hash  linkit.exe" | Out-File -FilePath dist\linkit.exe.sha256 -Encoding ascii
+
     - name: Create Release and Upload EXE
-      uses: softprops/action-gh-release@v1
+      uses: softprops/action-gh-release@v2
       with:
-        files: dist/linkit.exe
+        tag_name: ${{ github.ref_name }}
+        name: linkit ${{ github.ref_name }}
+        files: |
+          dist/linkit.exe
+          dist/linkit.exe.sha256
+        fail_on_unmatched_files: true
         draft: false
         prerelease: false
         generate_release_notes: true
