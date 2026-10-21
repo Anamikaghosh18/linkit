@@ -3,7 +3,8 @@ from tkinter import ttk, messagebox
 import threading
 from .config import load_config, save_config, PORTAL_URL
 from .credentials import get_credentials, clear_credentials, save_credentials
-from .wifi import current_ssid, is_visible, connect_using_saved_profile
+from .wifi import current_ssid
+from .campus import connect_to_campus, discover_campus_networks, is_campus_ssid
 from .portal import open_portal, authenticate
 from .startup import install_startup
 import time
@@ -11,22 +12,20 @@ import pystray
 from PIL import Image
 
 
-class LinkitGUI:
+class ConnectWirelessGUI:
     def __init__(self):
         self.root = tk.Tk()
-        self.root.title("linkit Setup")
+        self.root.title("connect-wireless Setup")
         self.root.geometry("450x400")
         self.root.resizable(False, False)
         self.running = False
         self.icon = None
         self.setup_frame = None
-        self.ssid_var = tk.StringVar()
         self.username_var = tk.StringVar()
         self.password_var = tk.StringVar()
 
         # Check if already configured
-        cfg = load_config()
-        if cfg.get("ssid") and self._stored_username():
+        if self._stored_username():
             self.create_tray_icon()
             self.root.withdraw()
             self.start_background_service()
@@ -57,7 +56,7 @@ class LinkitGUI:
         header.pack(fill=tk.X)
         header.pack_propagate(False)
 
-        title = tk.Label(header, text="linkit", font=("Arial", 24, "bold"), 
+        title = tk.Label(header, text="linkit:connect-wireless", font=("Arial", 20, "bold"), 
                         bg="#2c3e50", fg="white")
         title.pack(pady=20)
 
@@ -70,10 +69,15 @@ class LinkitGUI:
         content.pack(fill=tk.BOTH, expand=True)
         self.setup_frame = content
 
-        # SSID Field
-        tk.Label(content, text="Wi-Fi Network Name (SSID):", font=("Arial", 10, "bold")).pack(anchor=tk.W)
-        ssid_entry = ttk.Entry(content, textvariable=self.ssid_var, font=("Arial", 10))
-        ssid_entry.pack(fill=tk.X, pady=(5, 15))
+        # Info label: campus networks are found automatically
+        tk.Label(
+            content,
+            text="Campus Wi-Fi networks are detected and joined automatically.",
+            font=("Arial", 9),
+            fg="#2c3e50",
+            wraplength=380,
+            justify=tk.LEFT,
+        ).pack(anchor=tk.W, pady=(0, 15))
 
         # Username Field
         tk.Label(content, text="Portal Username:", font=("Arial", 10, "bold")).pack(anchor=tk.W)
@@ -103,14 +107,11 @@ class LinkitGUI:
         info_label.pack(side=tk.BOTTOM, pady=10)
 
         # Load existing config if available
-        cfg = load_config()
-        if cfg.get("ssid"):
-            self.ssid_var.set(cfg["ssid"])
         username = self._stored_username()
         if username:
             self.username_var.set(username)
 
-        ssid_entry.focus()
+        username_entry.focus()
 
     def reset_config(self):
         if messagebox.askyesno("Reset Configuration", 
@@ -121,21 +122,15 @@ class LinkitGUI:
                 messagebox.showerror("Error", f"Failed to clear credentials: {exc}")
                 return
             cfg = load_config()
-            cfg["ssid"] = ""
             save_config(cfg)
-            self.ssid_var.set("")
             self.username_var.set("")
             self.password_var.set("")
             messagebox.showinfo("Reset Complete", "Configuration has been reset.")
 
     def save_and_start(self):
-        ssid = self.ssid_var.get().strip()
         username = self.username_var.get().strip()
         password = self.password_var.get()
 
-        if not ssid:
-            messagebox.showerror("Error", "Please enter the Wi-Fi network name (SSID).")
-            return
         if not username:
             messagebox.showerror("Error", "Please enter your portal username.")
             return
@@ -146,7 +141,6 @@ class LinkitGUI:
         try:
             # Save config
             cfg = load_config()
-            cfg["ssid"] = ssid
             cfg["portal_url"] = PORTAL_URL
             save_config(cfg)
 
@@ -156,8 +150,8 @@ class LinkitGUI:
             # Install startup
             install_startup()
 
-            messagebox.showinfo("Setup Complete", 
-                              "linkit is now configured and will start automatically with Windows.\n\n"
+            messagebox.showinfo("Setup Complete",
+                              "connect-wireless is now configured and will start automatically with Windows.\n\n"
                               "The application will run in the background and auto-connect when the network is in range.")
 
             # Hide the setup window (the root owns the tray icon, so it must
@@ -174,7 +168,7 @@ class LinkitGUI:
             return
         # Create a simple icon (colored square)
         icon_image = Image.new('RGB', (64, 64), color='#3498db')
-        self.icon = pystray.Icon("linkit", icon_image, "linkit")
+        self.icon = pystray.Icon("connect-wireless", icon_image, "connect-wireless")
 
         menu = pystray.Menu(
             pystray.MenuItem("Status", self.show_status),
@@ -196,14 +190,21 @@ class LinkitGUI:
             pass
 
     def show_status(self, icon, item):
-        cfg = load_config()
-        ssid = cfg.get("ssid", "Not configured")
         current = current_ssid() or "Not connected"
         status = "Running" if self.running else "Stopped"
+        try:
+            networks = discover_campus_networks()
+        except Exception:
+            networks = []
+        if networks:
+            names = ", ".join(network["ssid"] for network in networks)
+            in_range = f"Campus networks in range: {names}"
+        else:
+            in_range = "Campus networks in range: none detected"
         self._on_tk_thread(
-            messagebox.showinfo, "linkit Status", 
-                          f"Target Network: {ssid}\n"
+            messagebox.showinfo, "connect-wireless Status",
                           f"Current Connection: {current}\n"
+                          f"{in_range}\n"
                           f"Status: {status}")
 
     def open_settings(self, icon, item):
@@ -233,10 +234,6 @@ class LinkitGUI:
         
         def worker():
             cfg = load_config()
-            ssid = cfg.get("ssid", "").strip()
-            if not ssid:
-                self.running = False
-                return
 
             last_portal_open = 0.0
             while self.running:
@@ -247,16 +244,16 @@ class LinkitGUI:
                         continue
 
                     current = current_ssid()
-                    if current and current.casefold() == ssid.casefold():
+                    if current and is_campus_ssid(current):
                         ok, _message = authenticate(username, password, cfg.get("portal_url", PORTAL_URL))
                         if not ok:
                             now = time.time()
                             if cfg.get("open_portal_on_detect", True) and now - last_portal_open > 300:
                                 open_portal(cfg.get("portal_url", PORTAL_URL))
                                 last_portal_open = now
-                    elif cfg.get("auto_connect", True) and is_visible(ssid):
-                        connect_using_saved_profile(ssid)
-                    
+                    elif cfg.get("auto_connect", True):
+                        connect_to_campus()
+
                     time.sleep(max(10, int(cfg.get("poll_seconds", 20))))
                 except Exception:
                     time.sleep(30)
@@ -267,7 +264,7 @@ class LinkitGUI:
         self.root.mainloop()
 
 def main():
-    app = LinkitGUI()
+    app = ConnectWirelessGUI()
     app.run()
 
 if __name__ == "__main__":

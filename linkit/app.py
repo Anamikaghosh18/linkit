@@ -4,7 +4,8 @@ import time
 import sys
 from .config import load_config, save_config, APP_DIR, CONFIG_PATH, PORTAL_URL
 from .credentials import prompt_and_save, get_credentials, clear_credentials
-from .wifi import current_ssid, is_visible, connect_using_saved_profile
+from .wifi import current_ssid
+from .campus import connect_to_campus, discover_campus_networks, is_campus_ssid
 from .portal import open_portal, authenticate
 from .startup import install_startup, uninstall_startup
 
@@ -13,35 +14,35 @@ CLI_COMMANDS = ("setup", "reset", "status", "run", "install-startup", "uninstall
 
 def setup() -> None:
     cfg = load_config()
-    print("linkit first-time setup")
-    print("-----------------------------")
-    ssid = input("Exact LPU Wi-Fi SSID (as shown by Windows): ").strip()
-    if not ssid:
-        raise ValueError("SSID cannot be empty.")
-    cfg["ssid"] = ssid
+    print("connect-wireless first-time setup")
+    print("------------------------------------")
+    print("Only your university portal login is needed.")
+    print("Campus Wi-Fi networks are detected and joined automatically.")
     cfg["portal_url"] = input(f"Portal URL [{PORTAL_URL}]: ").strip() or PORTAL_URL
     save_config(cfg)
     prompt_and_save()
-    print("\nSetup complete. Test with: python -m linkit run")
+    print("\nSetup complete. Test with: connect-wireless.exe run")
 
 def reset() -> None:
     clear_credentials()
-    cfg = load_config()
-    cfg["ssid"] = ""
-    save_config(cfg)
-    print("Saved credentials removed and SSID cleared.")
-    print("Run 'python -m linkit setup' to configure again.")
+    print("Saved credentials removed.")
+    print("Run 'connect-wireless.exe setup' to configure again.")
 
 def status() -> None:
     cfg = load_config()
     print(f"Config: {CONFIG_PATH}")
-    print(f"SSID configured: {'yes' if cfg.get('ssid') else 'no'}")
     print(f"Portal: {cfg.get('portal_url', PORTAL_URL)}")
     try:
         print(f"Current SSID: {current_ssid() or 'not connected / unavailable'}")
-        target = cfg.get("ssid", "")
-        if target:
-            print(f"Target visible: {'yes' if is_visible(target) else 'no'}")
+        networks = discover_campus_networks()
+        if networks:
+            print("Campus networks in range:")
+            for network in networks:
+                signal = network.get("signal")
+                strength = f"{signal}%" if signal is not None else "signal unknown"
+                print(f"  - {network['ssid']} ({strength}, {network.get('auth') or 'auth unknown'})")
+        else:
+            print("Campus networks in range: none detected")
     except Exception as exc:
         print(f"Wi-Fi status error: {exc}")
     try:
@@ -52,21 +53,18 @@ def status() -> None:
 
 def run_loop() -> None:
     cfg = load_config()
-    ssid = cfg.get("ssid", "").strip()
-    if not ssid:
-        print("linkit is not configured. Run 'python -m linkit setup'.")
-        return
     username, password = get_credentials()
     if not username or not password:
-        print("Credentials are missing. Run 'python -m linkit setup'.")
+        print("Credentials are missing. Run 'connect-wireless.exe setup'.")
         return
 
-    print(f"linkit running. Target SSID: {ssid}. Press Ctrl+C to stop.")
+    print("connect-wireless running. Campus Wi-Fi is detected and joined automatically.")
+    print("Press Ctrl+C to stop.")
     last_portal_open = 0.0
     while True:
         try:
             current = current_ssid()
-            if current and current.casefold() == ssid.casefold():
+            if current and is_campus_ssid(current):
                 # Do not submit credentials until the portal flow is verified.
                 ok, message = authenticate(username, password, cfg.get("portal_url", PORTAL_URL))
                 if not ok:
@@ -77,25 +75,27 @@ def run_loop() -> None:
                         last_portal_open = now
                 else:
                     print("Portal authentication reported successful.")
-            elif cfg.get("auto_connect", True) and is_visible(ssid):
-                ok, message = connect_using_saved_profile(ssid)
-                print("Connection request sent." if ok else f"Connection request may have failed: {message}")
+            elif cfg.get("auto_connect", True):
+                ok, message = connect_to_campus()
+                print(message if ok else f"No campus connection made: {message}")
             time.sleep(max(10, int(cfg.get("poll_seconds", 20))))
         except KeyboardInterrupt:
-            print("linkit stopped.")
+            print("connect-wireless stopped.")
             return
         except Exception as exc:
             print(f"Temporary error: {exc}")
             time.sleep(30)
 
 def main(argv: list[str] | None = None) -> None:
-    parser = argparse.ArgumentParser(prog="linkit", description="Lightweight campus Wi-Fi helper")
+    parser = argparse.ArgumentParser(
+        prog="connect-wireless", description="Lightweight campus Wi-Fi helper"
+    )
     sub = parser.add_subparsers(dest="command")
     sub.add_parser("setup", help="first-time configuration")
     sub.add_parser("reset", help="remove saved credentials and settings")
     sub.add_parser("status", help="show configuration and network status")
     sub.add_parser("run", help="run background monitoring in this console")
-    sub.add_parser("install-startup", help="start linkit when you sign in to Windows")
+    sub.add_parser("install-startup", help="start connect-wireless when you sign in to Windows")
     sub.add_parser("uninstall", help="remove Windows startup registration")
     args = parser.parse_args(argv)
     try:
@@ -109,10 +109,10 @@ def main(argv: list[str] | None = None) -> None:
             run_loop()
         elif args.command == "install-startup":
             install_startup()
-            print("linkit registered for startup.")
+            print("connect-wireless registered for startup.")
         elif args.command == "uninstall":
             uninstall_startup()
-            print("linkit startup registration removed.")
+            print("connect-wireless startup registration removed.")
         else:
             parser.print_help()
     except Exception as exc:

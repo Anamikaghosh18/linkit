@@ -1,4 +1,4 @@
-"""Entry point for ``python -m linkit``.
+"""Entry point for ``python -m linkit`` (and for ``connect-wireless.exe``).
 
 With no arguments the desktop application (tray icon + setup wizard) starts.
 With a command such as ``status`` or ``setup`` the console CLI is used

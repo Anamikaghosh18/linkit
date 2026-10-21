@@ -4,17 +4,29 @@ import os
 from pathlib import Path
 
 APP_NAME = "linkit"
+# The data folder keeps its historic name so that upgrades of an existing
+# install do not orphan the saved configuration.
 APP_DIR = Path(os.environ.get("APPDATA", str(Path.home()))) / APP_NAME
 CONFIG_PATH = APP_DIR / "config.json"
 PORTAL_URL = "https://internet.lpu.in/24online/webpages/client.jsp"
 
 DEFAULTS = {
-    "ssid": "",
     "portal_url": PORTAL_URL,
     "poll_seconds": 20,
     "auto_connect": True,
     "open_portal_on_detect": True,
+    # Extra regular expressions that mark a Wi-Fi name as a campus network.
+    "campus_patterns": [],
 }
+
+#: Patterns that identify university networks out of the box.
+DEFAULT_CAMPUS_PATTERNS = (
+    r"^LPU\b",
+    r"\bLPU\b",
+    r"^Lovely\s+Professional\s+University",
+    r"\bCampus\b",
+)
+
 
 def load_config() -> dict:
     if not CONFIG_PATH.exists():

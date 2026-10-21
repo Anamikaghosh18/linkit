@@ -2,6 +2,8 @@ from __future__ import annotations
 import getpass
 import sys
 
+# The credential entry keeps its historic service name so that existing
+# installations keep working after the rename to connect-wireless.
 SERVICE = "linkit.LPU24Online"
 
 def _keyring():

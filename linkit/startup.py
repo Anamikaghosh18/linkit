@@ -3,6 +3,8 @@ import sys
 from pathlib import Path
 
 RUN_KEY = r"Software\Microsoft\Windows\CurrentVersion\Run"
+# The registry value name is kept stable so that a renamed executable
+# overwrites the previous startup entry instead of leaving a stale one behind.
 VALUE_NAME = "linkit"
 
 def _winreg():
